@@ -1,0 +1,4 @@
+# Store and check out text files with LF so the repository looks the same on every OS
+* text=auto eol=lf
+*.png binary
+*.npz binary
