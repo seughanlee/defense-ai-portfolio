@@ -1,124 +1,90 @@
-"""Step 4: uncertainty quantification. Builds 90 % intervals with five methods from the same deep models
-and evaluates them on validation points (or the official test set when --split test, used once at the end).
+"""Step 4: interval construction. All methods produce 90 % intervals on the capped-RUL scale (EVALUATION.md,
+amended: the upper end 125 reads as "125 cycles or more").
 
-Methods
-- MC Dropout            : quantiles of N_MC stochastic passes of one model (dropout kept on)
-- Deep ensemble         : ensemble mean ± z * std across seeds (epistemic spread only)
-- Conformal (fixed)     : ensemble mean ± q, q from calibration residuals
-- Conformal (normalized): ensemble mean ± q * (std + beta), q from residuals / (std + beta)
-- Conformal (Mondrian)  : fixed-width conformal with a separate q per predicted-RUL bin
-
-Usage: python uq.py --subset FD001 --model cnn [--target capped|true] [--split val|test] [--k-calib 10]
+Methods (deep = 5-seed ensemble; GBM supports the conformal variants only, it has no spread estimate)
+- MC Dropout            : 5 % / 95 % quantiles of N_MC stochastic passes of one model (dropout on)
+- Deep ensemble         : ensemble mean ± z * std across seeds (spread between models only)
+- Conformal (fixed)     : mean ± q, q = conformal quantile of |residual| on calibration engines
+- Conformal (asymmetric): separate conformal quantiles for under- and over-prediction (alpha/2 each)
+- Conformal (normalized): mean ± q * (std + beta), q from |residual| / (std + beta)
+- Conformal (Mondrian)  : fixed-width conformal with a separate q per *predicted*-RUL bin
 """
-import argparse
-import json
-from pathlib import Path
-
 import numpy as np
 import torch
 
-from metrics import interval_metrics
-from models import MODELS
-from prep import CAP, prepare, official_test_points, truncation_points
-from train import CKPT, predict
+from prep import CAP
+from train import predict
 
-RESULTS = Path(__file__).parent / "results"
 ALPHA = 0.10
 N_MC = 50
-Z90 = 1.6449
-PRED_BINS = [0, 50, 100, np.inf]          # Mondrian bins on the *predicted* RUL (known at prediction time)
+PRED_BINS = [0, 50, 100, np.inf]
+MIN_PER_BIN = 10
 
 
-def conformal_quantile(scores, alpha=ALPHA):
+def conformal_quantile(scores, alpha):
+    """Finite-sample split-conformal quantile: the ceil((n+1)(1-alpha))-th smallest score."""
+    scores = np.sort(np.asarray(scores))
     n = len(scores)
-    level = min(1.0, np.ceil((n + 1) * (1 - alpha)) / n)
-    return float(np.quantile(scores, level, method="higher"))
+    k = int(np.ceil((n + 1) * (1 - alpha)))
+    return float(scores[min(k, n) - 1])
 
 
 @torch.no_grad()
 def mc_dropout(model, X, n=N_MC, seed=0):
     torch.manual_seed(seed)
-    model.train()                          # dropout active; the models have no batch-norm
+    model.train()                    # dropout active (the models have no batch-norm layers)
     samples = np.stack([model(torch.from_numpy(X)).numpy() for _ in range(n)])
     model.eval()
     return samples
 
 
-def load_models(subset, model, norm, n_channels):
-    out = []
-    for path in sorted(CKPT.glob(f"{subset}_{model}_{norm}_s*.pt")):
-        m = MODELS[model](n_channels)
-        m.load_state_dict(torch.load(path))
-        out.append(m.eval())
+def deep_outputs(models, X, with_mc=False):
+    P = np.stack([predict(m, X) for m in models])
+    out = dict(mu=P.mean(0), sd=P.std(0))
+    if with_mc:
+        out["mc"] = mc_dropout(models[0], X)
     return out
 
 
-def intervals(models, cal, ev, cal_target, alpha=ALPHA):
-    """Return {method: (lo, hi, point)} on the evaluation points."""
-    clip = lambda a: np.clip(a, 0, None)
-    P_cal = np.stack([predict(m, cal["X"]) for m in models])
-    P_ev = np.stack([predict(m, ev["X"]) for m in models])
-    mu_cal, sd_cal = P_cal.mean(0), P_cal.std(0)
-    mu_ev, sd_ev = P_ev.mean(0), P_ev.std(0)
+def build_intervals(cal, ev, y_cal, alpha=ALPHA):
+    """cal/ev: dicts with 'mu' and optionally 'sd' (ensemble spread) and 'mc' (MC samples, ev only).
+    Returns {method: (lo, hi)} on the evaluation points, clipped to [0, CAP]."""
+    z = {0.5: 0.6745, 0.6: 0.8416, 0.7: 1.0364, 0.8: 1.2816, 0.9: 1.6449, 0.95: 1.9600}[round(1 - alpha, 2)]
+    mu_c, mu_e = cal["mu"], ev["mu"]
+    r = y_cal - mu_c
     out = {}
+    if "mc" in ev:
+        out["MC Dropout"] = (np.quantile(ev["mc"], alpha / 2, 0), np.quantile(ev["mc"], 1 - alpha / 2, 0))
+    if "sd" in ev:
+        out["Deep ensemble"] = (mu_e - z * ev["sd"], mu_e + z * ev["sd"])
 
-    mc = mc_dropout(models[0], ev["X"])
-    out["MC Dropout"] = (np.quantile(mc, alpha / 2, 0), np.quantile(mc, 1 - alpha / 2, 0), mc.mean(0))
-    out["Deep ensemble"] = (mu_ev - Z90 * sd_ev, mu_ev + Z90 * sd_ev, mu_ev)
+    q = conformal_quantile(np.abs(r), alpha)
+    out["Conformal (fixed)"] = (mu_e - q, mu_e + q)
 
-    q = conformal_quantile(np.abs(cal_target - mu_cal))
-    out["Conformal (fixed)"] = (mu_ev - q, mu_ev + q, mu_ev)
+    q_under = conformal_quantile(-r, alpha / 2)          # how far above the truth predictions go
+    q_over = conformal_quantile(r, alpha / 2)            # how far below the truth predictions go
+    out["Conformal (asymmetric)"] = (mu_e - q_under, mu_e + q_over)
 
-    beta = float(np.median(sd_cal))
-    qn = conformal_quantile(np.abs(cal_target - mu_cal) / (sd_cal + beta))
-    out["Conformal (normalized)"] = (mu_ev - qn * (sd_ev + beta), mu_ev + qn * (sd_ev + beta), mu_ev)
+    if "sd" in cal:
+        beta = float(np.median(cal["sd"]))
+        qn = conformal_quantile(np.abs(r) / (cal["sd"] + beta), alpha)
+        out["Conformal (normalized)"] = (mu_e - qn * (ev["sd"] + beta), mu_e + qn * (ev["sd"] + beta))
 
-    lo, hi = np.empty_like(mu_ev), np.empty_like(mu_ev)
+    lo, hi = mu_e - q, mu_e + q
     for a, b in zip(PRED_BINS[:-1], PRED_BINS[1:]):
-        mc_, me_ = (mu_cal >= a) & (mu_cal < b), (mu_ev >= a) & (mu_ev < b)
-        qb = conformal_quantile(np.abs(cal_target - mu_cal)[mc_]) if mc_.sum() >= 10 else q
-        lo[me_], hi[me_] = mu_ev[me_] - qb, mu_ev[me_] + qb
-    out["Conformal (Mondrian)"] = (lo, hi, mu_ev)
-    return {k: (clip(l), h, pt) for k, (l, h, pt) in out.items()}
+        mc_, me_ = (mu_c >= a) & (mu_c < b), (mu_e >= a) & (mu_e < b)
+        qb = conformal_quantile(np.abs(r[mc_]), alpha) if mc_.sum() >= MIN_PER_BIN else q
+        lo[me_], hi[me_] = mu_e[me_] - qb, mu_e[me_] + qb
+    out["Conformal (Mondrian)"] = (lo, hi)
+    return {k: (np.clip(l, 0, CAP), np.clip(h, 0, CAP)) for k, (l, h) in out.items()}
 
 
-def coverage_curve(models, cal, ev, cal_target, ev_target, levels=(0.5, 0.6, 0.7, 0.8, 0.9, 0.95)):
-    """Empirical coverage at several nominal levels for each method."""
-    curves = {}
-    for lv in levels:
-        for name, (lo, hi, _) in intervals(models, cal, ev, cal_target, alpha=1 - lv).items():
-            curves.setdefault(name, []).append(float(((ev_target >= lo) & (ev_target <= hi)).mean()))
-    return list(levels), curves
-
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--subset", default="FD001")
-    ap.add_argument("--model", default="cnn")
-    ap.add_argument("--norm", default="condition")
-    ap.add_argument("--target", default="capped", choices=["capped", "true"])
-    ap.add_argument("--split", default="val", choices=["val", "test"])
-    ap.add_argument("--k-calib", type=int, default=10)
-    args = ap.parse_args()
-
-    p = prepare(args.subset, per_condition=args.norm == "condition")
-    models = load_models(args.subset, args.model, args.norm, p.n_channels)
-    cal = truncation_points(p, "calib", K=args.k_calib)
-    ev = truncation_points(p, "val") if args.split == "val" else official_test_points(p)
-    to_target = (lambda r: np.minimum(r, CAP)) if args.target == "capped" else (lambda r: r)
-    res = {}
-    for name, (lo, hi, pt) in intervals(models, cal, ev, to_target(cal["rul"])).items():
-        hi_eval = np.minimum(hi, CAP) if args.target == "capped" else hi
-        m = interval_metrics(lo, hi_eval, to_target(ev["rul"]))
-        res[name] = m
-        cond = "  ".join(f"{k}:{v[0]:.2f}" for k, v in m["conditional"].items())
-        print(f"{name:24s} cov {m['coverage']:.3f}  width {m['width']:6.1f}  winkler {m['winkler']:6.1f}  | {cond}")
-    tag = f"{args.subset}_{args.model}_{args.norm}_{args.target}_{args.split}_k{args.k_calib}"
-    RESULTS.mkdir(exist_ok=True)
-    (RESULTS / f"uq_{tag}.json").write_text(json.dumps(dict(args=vars(args), n_models=len(models),
-                                                            n_calib=len(cal["rul"]), n_eval=len(ev["rul"]),
-                                                            metrics=res), indent=1))
-
-
-if __name__ == "__main__":
-    main()
+def safety_metrics(lo, hi, y, units):
+    """Split the misses by direction and look at per-engine coverage.
+    below = true RUL under the lower bound: the engine fails earlier than promised (dangerous).
+    above = true RUL over the upper bound: maintenance would come too early (costly, not dangerous)."""
+    inside = (y >= lo) & (y <= hi)
+    per_engine = np.array([inside[units == u].mean() for u in np.unique(units)])
+    return dict(below=float((y < lo).mean()), above=float((y > hi).mean()),
+                engine_min=float(per_engine.min()), engine_p10=float(np.percentile(per_engine, 10)),
+                engines_below_80=int((per_engine < 0.8).sum()), n_engines=len(per_engine))

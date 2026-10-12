@@ -1,0 +1,16 @@
+{
+ "FD001": {
+  "model": "GBM",
+  "method": "Conformal (Mondrian)",
+  "calib": "K=10",
+  "coverage": 0.88,
+  "width": 41.56761708332676
+ },
+ "FD004": {
+  "model": "LSTM",
+  "method": "Conformal (Mondrian)",
+  "calib": "K=10",
+  "coverage": 0.9243243243243243,
+  "width": 39.23072052001953
+ }
+}

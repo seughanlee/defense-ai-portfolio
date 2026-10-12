@@ -56,6 +56,27 @@ def test_interval_coverage_on_synthetic_data():
     assert abs(m["coverage"] - 0.90) < 0.005
 
 
+def test_conformal_coverage_on_skewed_synthetic_residuals():
+    """Split conformal must reach >= 90 % on exchangeable data even when residuals are skewed,
+    and the asymmetric variant must keep each tail near 5 %."""
+    from uq import build_intervals
+    rng = np.random.default_rng(1)
+    for n_cal in (25, 250):
+        covs, below = [], []
+        for rep in range(200):
+            mu_c, mu_e = rng.uniform(0, 100, n_cal), rng.uniform(0, 100, 2000)
+            y_c = mu_c + rng.gamma(2, 5, n_cal) - 10           # skewed errors
+            y_e = mu_e + rng.gamma(2, 5, 2000) - 10
+            iv = build_intervals({"mu": mu_c}, {"mu": mu_e}, y_c)
+            lo, hi = iv["Conformal (fixed)"]
+            # points outside [0, 125] are excluded from the check: clipping only removes impossible values
+            covs.append(((y_e >= lo) & (y_e <= hi) | (y_e < 0) | (y_e > 125)).mean())
+            lo_a, _ = iv["Conformal (asymmetric)"]
+            below.append(((y_e < lo_a) & (y_e >= 0)).mean())
+        assert np.mean(covs) >= 0.895, (n_cal, np.mean(covs))
+        assert abs(np.mean(below) - 0.05) < 0.02, (n_cal, np.mean(below))
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
