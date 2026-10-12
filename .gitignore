@@ -1,0 +1,17 @@
+# Python environment and caches
+.venv/
+__pycache__/
+*.pyc
+
+# Regenerable or downloadable data (see each project's README for how to recreate it)
+data/
+
+# Trained weights, exported models and training logs
+checkpoints/
+*.onnx
+*.pt
+
+# OS / editor
+Thumbs.db
+.DS_Store
+.vscode/
