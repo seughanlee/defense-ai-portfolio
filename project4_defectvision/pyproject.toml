@@ -1,0 +1,18 @@
+[project]
+name = "defectvision-ml"
+version = "0.1.0"
+description = "DefectVision AI - PatchCore-based visual inspection (ML core)"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = [
+    "slow: builds a real backbone (random weights) - runs in seconds to a minute on CPU",
+    "dataset: needs the real MVTec AD dataset under data/mvtec_ad (skipped when absent)",
+]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning", "ignore::UserWarning"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"

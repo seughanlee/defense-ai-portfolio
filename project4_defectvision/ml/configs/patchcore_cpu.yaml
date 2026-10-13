@@ -1,0 +1,29 @@
+# PatchCore CPU development configuration.
+# Every value here is recorded in the artifact metadata so a result can be traced back to its settings.
+
+model:
+  name: patchcore
+  backbone: wide_resnet50_2       # timm model name (default timm weights: racm_in1k)
+  layers: [layer2, layer3]        # mid-level features, as in the PatchCore paper
+  pre_trained: true               # false only for offline smoke tests (random weights, meaningless scores)
+  coreset_ratio: 0.1              # fraction of patch embeddings kept in the memory bank
+  num_neighbors: 9                # neighbours used for the image-score reweighting
+
+preprocessing:
+  image_size: 256                 # square resize; masks are resized with nearest-neighbour
+  mean: [0.485, 0.456, 0.406]     # ImageNet statistics (backbone was trained with these)
+  std: [0.229, 0.224, 0.225]
+
+data:
+  val_fraction: 0.2               # share of train/good held out from the memory bank for threshold calibration
+  seed: 42
+
+threshold:
+  method: val_normal_quantile     # uses held-out normal images only; the official test split is never used
+  image_quantile: 0.99            # image threshold = this quantile of validation-normal image scores
+  pixel_quantile: 0.999           # pixel threshold for the binary defect mask
+
+runtime:
+  device: cpu
+  batch_size: 8
+  num_threads: 4                  # keep below the core count so other jobs on the machine are not starved

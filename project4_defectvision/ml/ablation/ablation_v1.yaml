@@ -1,0 +1,66 @@
+# PatchCore ablation v1 — pre-registered before any MVTec AD result was produced.
+#
+# Design: one factor at a time around a baseline (B0). Every run uses the same data split
+# (train/good 80 % fit / 20 % val, data.seed 42) and the same runtime (CPU, 4 threads).
+# Model selection uses ONLY validation data (held-out normals + synthetic anomalies on them).
+# The official test split is evaluated for every run but is never used to choose anything.
+
+base_config: ml/configs/patchcore_cpu.yaml
+
+# B0. Backbone uses torchvision ImageNet weights (".tv_in1k") so that all backbones share one
+# training recipe and match the PatchCore paper. The project default (timm "racm" weights) is a level
+# of the backbone factor instead.
+baseline:
+  model:
+    backbone: wide_resnet50_2.tv_in1k
+    layers: [layer2, layer3]
+    sampling: kcenter_greedy
+    coreset_ratio: 0.1
+  preprocessing:
+    image_size: 256
+  runtime:
+    device: cpu
+    batch_size: 8
+    num_threads: 4
+
+categories: [metal_nut, screw, capsule, transistor]
+
+validation_proxy:
+  anomaly_seed: 1234          # synthetic anomalies on validation images
+  aupro_fpr_limit: 0.3
+
+latency:
+  n_images: 30                # batch-1 timed calls on validation images, after 3 warm-up calls
+
+# Selection rule (fixed in advance):
+#   1. average each config over seeds, then over categories, using validation-proxy image AUROC;
+#   2. among configs within 0.01 of the best, choose the lowest mean batch-1 P95 latency.
+selection:
+  metric: val_image_auroc
+  tolerance: 0.01
+  tie_break: latency_p95_ms
+
+experiments:
+  - {id: B0, factor: baseline, seeds: [0, 1, 2], overrides: {}}
+
+  - {id: BB-r18, factor: backbone, overrides: {model: {backbone: resnet18.tv_in1k}}}
+  - {id: BB-r50, factor: backbone, overrides: {model: {backbone: resnet50.tv_in1k}}}
+  - {id: BB-wrn-racm, factor: backbone, overrides: {model: {backbone: wide_resnet50_2}}}
+
+  - {id: L-2, factor: layers, overrides: {model: {layers: [layer2]}}}
+  - {id: L-3, factor: layers, overrides: {model: {layers: [layer3]}}}
+  - id: L-123
+    factor: layers
+    overrides: {model: {layers: [layer1, layer2, layer3]}}
+    not_run: >-
+      Resource budget. layer1 sets the patch grid to 64x64 at 256 px: ~176 images x 4096 patches x 1792 dims
+      = ~5 GB of float32 embeddings before sub-sampling, and k-center greedy over ~720k points is
+      estimated at hours on this 4-core CPU.
+
+  - {id: S-kc001, factor: sampling, overrides: {model: {coreset_ratio: 0.01}}}
+  - {id: S-kc025, factor: sampling, overrides: {model: {coreset_ratio: 0.25}}}
+  - {id: S-rand010, factor: sampling, seeds: [0, 1, 2], overrides: {model: {sampling: random}}}
+  - {id: S-full, factor: sampling, overrides: {model: {coreset_ratio: 1.0}}}
+
+  - {id: R-192, factor: image_size, overrides: {preprocessing: {image_size: 192}}}
+  - {id: R-320, factor: image_size, overrides: {preprocessing: {image_size: 320}}}

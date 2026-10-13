@@ -20,7 +20,8 @@ L-SAM 같은 다기능레이더(MFR) 기반 대공방어 체계 기업(LIG넥스
 | 1 | [레이더 표적 추적 필터 비교 (KF / IMM / CT-EKF)](project1_radar_tracking/) | MFR 추적 처리 | 칼만필터, IMM, EKF, 몬테카를로, NEES 일관성, 강건성 시험 | **v2 완료** |
 | 2 | [마이크로도플러 기반 표적 분류](project2_microdoppler/) | 표적 식별(드론, 조류, 회전익) | 물리 기반 시뮬레이터, CNN vs 특징+RF, 보정, 미지 표적 탐지, ONNX INT8 | **v1 완료** |
 | 3 | [장비 고장 예측(PHM)](project3_phm/) | 체계 가동률·후속 군수지원 | NASA C-MAPSS, 잔여수명(RUL) 예측, conformal 예측 구간, 정비 비용 분석 | **v1 완료** |
-| 4 | 폐쇄망 기술문서 RAG | 정비 교범·규격 검색 | 로컬 LLM, 하이브리드 검색, 평가셋 구축 | 예정 |
+| 4 | [DefectVision: 부품 외관 이상탐지](project4_defectvision/) | 생산·정비 품질 검사 | PatchCore(정상 이미지만 학습), heatmap, 사전 등록 ablation, AUPRO | **진행 중 (ML 코어 완료, 실데이터 실험 전)** |
+| 5 | 폐쇄망 기술문서 RAG | 정비 교범·규격 검색 | 로컬 LLM, 하이브리드 검색, 평가셋 구축 | 예정 |
 
 ### 진행 순서를 이렇게 잡은 이유
 1. **추적 필터(1)**: 레이더 체계 엔지니어와 대화할 공통 언어입니다. AI 모델 이전에 갖춰야 하는 기초입니다.
@@ -40,11 +41,13 @@ L-SAM 같은 다기능레이더(MFR) 기반 대공방어 체계 기업(LIG넥스
 | `project1_radar_tracking/` | 칼만필터·IMM 추적 (numpy만 사용) |
 | `project2_microdoppler/` | 마이크로도플러 시뮬레이터와 표적 분류 |
 | `project3_phm/` | C-MAPSS 잔여수명 예측과 예측 구간 |
+| `project4_defectvision/` | 정밀 부품 외관 이상탐지 (PatchCore) |
 | `prompts/` | 프로젝트 실행용 프롬프트 |
 | [CHANGELOG.md](CHANGELOG.md) | 버전별 검증 질문과 결론 |
 
 데이터(`data/`)와 학습된 가중치(`checkpoints/`)는 저장소에 넣지 않습니다. 각 프로젝트 README의 실행 방법대로 다시 만들 수 있습니다.
 - 프로젝트 2: `python dataset.py`로 시뮬레이션 데이터 생성 (약 3분)
+- 프로젝트 4: MVTec AD(CC BY-NC-SA 4.0)를 `project4_defectvision/data/mvtec_ad/`에 풂 (자세한 내용은 프로젝트 README)
 - 프로젝트 3: NASA PCoE 저장소에서 C-MAPSS를 받아 `project3_phm/data/cmapss/`에 풂 (출처와 SHA-256은 [EVALUATION.md](project3_phm/EVALUATION.md))
 
 ## 환경 설정

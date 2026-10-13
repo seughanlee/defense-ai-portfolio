@@ -1,0 +1,5 @@
+# Datasets (MVTec AD is CC BY-NC-SA 4.0 and large; synthetic data is regenerable)
+data/
+# Trained memory banks and evaluation outputs (regenerable; see README)
+artifacts/
+.pytest_cache/

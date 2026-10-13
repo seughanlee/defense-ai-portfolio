@@ -1,0 +1,16 @@
+# ML core (Phase 1). Versions tested on Windows 10 / Python 3.14 / CPU.
+# CPU torch: pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+torch>=2.6
+torchvision>=0.21
+anomalib==2.7.0      # PatchcoreModel (plain nn.Module) + KCenterGreedy coreset; pinned because its API changes between minors
+timm>=1.0            # backbone weights (pulled by anomalib)
+safetensors>=0.4     # pickle-free memory-bank storage
+opencv-python-headless>=4.9
+numpy>=1.26
+scipy>=1.11
+pandas>=2.0
+scikit-learn>=1.3
+matplotlib>=3.7
+pillow>=10
+PyYAML>=6
+pytest>=8
