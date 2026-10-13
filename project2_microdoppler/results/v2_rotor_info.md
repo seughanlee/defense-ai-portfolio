@@ -18,6 +18,7 @@ Aligned = window of +-40 Hz centred on each sample's dominant flash line (shift-
 | 0 dB | 2.0 s, 625 fps | 312 Hz | 0.5 Hz | 0.343 ± 0.037 | 0.378 ± 0.022 |
 
 ## Nonlinear check (gradient boosting on the aligned feature, 10 dB)
+_The sections below were run separately and added by hand; re-running rotor_info.py rewrites only the table above._
 | Setting | Probe accuracy |
 |---|---|
 | v1: 0.5 s, 258 fps | 0.428 +- 0.031 |
