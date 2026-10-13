@@ -25,7 +25,7 @@
 | 2 | FastAPI 백엔드 (검사 API, 모델 로딩, 이력 저장, readiness) | **완료** — 실서버(uvicorn) 확인, 테스트 30개 |
 | 3 | React 대시보드 | 대기 — Node.js 미설치 |
 | 4 | Docker Compose, PostgreSQL, CI | CI 워크플로 작성(push 전 미실행). Compose는 Docker 미설치로 대기 |
-| 5 | 비교 모델(CNN), 임계값 검증, 강건성, 벤치마크 보고서 | 예정 |
+| 5 | 비교 모델(CNN), 임계값 검증, 강건성, 벤치마크 보고서 | **임계값 안정성 분석 완료**(metal_nut), 강건성 시험 코드 완료·실측 대기, CNN 비교 예정 |
 
 ## 지금까지의 실측 결과 (1회 실행, 일반화 금지)
 B0 설정(wide_resnet50_2 torchvision 가중치, layer2+3, k-center coreset 10%, 256 px) · metal_nut · seed 0.
@@ -48,6 +48,12 @@ seed 1개·카테고리 1개 결과라, 설정 간 비교나 일반화 근거로
 - **검증용 합성 결함의 AUROC가 0.998로 거의 상한**입니다. 설정을 고르는 기준으로 쓰기에는 너무 쉬울 수 있어, 본 실행 결과와 함께 보고할 예정입니다.
 - 전체 ablation은 CPU로 **약 19시간**이 걸릴 것으로 추정됩니다 (coreset 선택 시간이 패치 수의 제곱에 비례).
 
+### 임계값을 믿어도 되는가 ([EVALUATION](docs/EVALUATION.md#임계값-안정성-metal_nut--b0--seed-0-2026-10-13))
+- 정상 검증 이미지 44장의 "99% 분위수"를 임계값으로 쓰면, 이론상 기대 오경보율은 1%가 아니라 **2.2~4.4%**(90% 상한 10.3%)입니다.
+  실측 4.5%(정상 22장 중 1장)는 이 범위 안이라 우연이 아니라 **검증셋 크기의 구조적 한계**입니다. 분포 가정 없이 순서통계량(점수를 줄 세운 k번째 값)으로 계산했습니다.
+- 틀린 4건(오경보 1, 미검출 3)은 모두 정상·결함 점수가 겹치는 좁은 띠(1.97~2.00)에 있습니다. 그중 하나는 임계값보다 0.0001 낮았습니다.
+  → 임계값 근처는 자동 판정 대신 **사람 재검사 구간**으로 두는 설계를 제안합니다 (미구현).
+
 ## 실행 방법
 작업 폴더: `project4_defectvision/`. 가상환경은 저장소 공용 `../.venv`를 씁니다.
 
@@ -55,7 +61,7 @@ seed 1개·카테고리 1개 결과라, 설정 간 비교나 일반화 근거로
 # 0) 의존성
 ..\.venv\Scripts\python.exe -m pip install -r requirements.txt -r backend\requirements.txt
 
-# 1) 린트 + 테스트 (오프라인, 약 1분. 랜덤 백본 + 합성 데이터, 87개)
+# 1) 린트 + 테스트 (오프라인, 약 1분. 랜덤 백본 + 합성 데이터, 103개)
 ..\.venv\Scripts\ruff.exe check .
 ..\.venv\Scripts\python.exe -m pytest -q
 
@@ -72,6 +78,10 @@ $env:DV_MODEL_ARTIFACT_DIR = "artifacts\models\metal_nut\patchcore\1.0.0"
 
 # 6) ablation (재실행 시 끝난 회차는 건너뜀, 기본 오프라인)
 ..\.venv\Scripts\python.exe -m ml.ablation.run_ablation --dry-run
+
+# 7) 임계값 안정성 / 강건성 (아티팩트 하나 기준)
+..\.venv\Scripts\python.exe -m ml.evaluation.threshold_stability --artifact artifacts\ablation\models\metal_nut\patchcore\B0-s0
+..\.venv\Scripts\python.exe -m ml.evaluation.robustness --artifact artifacts\ablation\models\metal_nut\patchcore\B0-s0
 ```
 `pre_trained=true`(기본값)는 첫 실행 때 timm 백본 가중치를 Hugging Face Hub에서 내려받습니다. 받은 뒤에는 `HF_HUB_OFFLINE=1`로 실행할 수 있습니다.
 
@@ -92,26 +102,27 @@ $env:DV_MODEL_ARTIFACT_DIR = "artifacts\models\metal_nut\patchcore\1.0.0"
 | `ml/configs/` | YAML 설정 (이미지 크기, 백본, coreset 비율, 샘플링 방식, 임계값 규칙, 디바이스) |
 | `ml/datasets/` | MVTec 구조 검증·분할·전처리, 합성 스모크 데이터, 검증용 합성 결함 |
 | `ml/inference/patchcore.py` | anomalib `PatchcoreModel` 래퍼: fit / calibrate / predict / save / load (safetensors + 해시 검증) |
-| `ml/training/`, `ml/evaluation/` | 학습 CLI, 지표(공식 코드와 일치 확인한 AUPRO 포함)·평가 CLI·메모리 측정 |
+| `ml/training/`, `ml/evaluation/` | 학습 CLI, 지표(공식 코드와 일치 확인한 AUPRO 포함)·평가 CLI·메모리 측정·임계값 안정성·강건성 |
 | `ml/ablation/` | 사전 등록 계획(`ablation_v1.yaml`), 실행기, 요약기 |
 | `ml/visualization/` | heatmap, overlay, 이진 마스크 패널 |
 | `backend/` | FastAPI 서비스와 테스트 |
 | `scripts/` | 데이터셋 점검, 합성 데이터 생성, AUPRO 교차검증 |
-| `tests/`, `backend/tests/` | pytest 87개 (ML 57, 백엔드 30) |
-| `results/` | 커밋하는 결과 CSV·표 (`aupro_crosscheck.csv`, `ablation/`) |
+| `tests/`, `backend/tests/` | pytest 103개 (ML 73, 백엔드 30) |
+| `results/` | 커밋하는 결과 CSV·표 (`aupro_crosscheck.csv`, `ablation/`, `threshold_stability/`) — 이미지는 넣지 않음 |
 | `data/`, `artifacts/`, `var/` | git 제외 (데이터·메모리 뱅크·API 저장소, 재생성 가능) |
 
 ## 면접에서 설명할 포인트
 - **테스트셋을 보지 않는 설정 선택:** 공식 분할에서 결함은 test에만 있어서, 검증 이미지에 결함을 합성해 선택 기준으로 쓰고 그 기준이 test 순위와 맞는지까지 재도록 설계했습니다.
 - **지표 구현을 공식 코드로 검증:** MVTec 공식 평가 코드와 비교해 영역 연결 방식(4-연결 vs 8-연결) 버그를 찾아 고쳤고, 4개 사례에서 소수점 5자리까지 일치시켰습니다.
 - **재현성:** anomalib coreset의 숨은 난수(torch·numpy 전역 RNG)를 찾아 seed를 고정했고, 백본 가중치 해시로 다른 가중치가 섞이면 로드를 거부합니다.
+- **임계값의 통계적 한계를 수치로:** "99% 분위수"라는 이름과 달리 검증 44장이면 기대 오경보율이 2.2~4.4%임을 순서통계량으로 보이고, 실측과 맞춰 봤습니다.
 - **서비스 안전장치:** 모델이 없으면 가짜 점수 대신 503(Demo Mode), 위장 파일·압축 폭탄·경로 조작 차단, DB 실패 시 저장 파일까지 되돌림.
 
 ## 다음 단계
 1. 보류 중인 ablation 본 실행 (약 19시간, 여러 번에 나눠 실행 가능)
 2. Node.js·Docker 설치 후 React 대시보드(Phase 3), Docker Compose + PostgreSQL(Phase 4)
-3. 임계값 안정성(검증셋 크기에 따른 흔들림), 강건성 시험(Phase 5)
+3. 강건성 시험 실측(밝기·노이즈·블러·JPEG·회전, 카테고리당 CPU 15~20분), 재검사 구간 설계, CNN 비교 모델(Phase 5)
 
 ## 문서
-[GLOSSARY](docs/GLOSSARY.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) · [DATASET](docs/DATASET.md) · [MODEL_DESIGN](docs/MODEL_DESIGN.md) · [EVALUATION](docs/EVALUATION.md) · [ABLATION_STUDY](docs/ABLATION_STUDY.md) · [TESTING](docs/TESTING.md) · [LIMITATIONS](docs/LIMITATIONS.md)
-DEPLOYMENT, PORTFOLIO 문서는 해당 Phase에서 실제 결과와 함께 작성합니다.
+[GLOSSARY](docs/GLOSSARY.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) · [DATASET](docs/DATASET.md) · [MODEL_DESIGN](docs/MODEL_DESIGN.md) · [EVALUATION](docs/EVALUATION.md) · [ABLATION_STUDY](docs/ABLATION_STUDY.md) · [TESTING](docs/TESTING.md) · [LIMITATIONS](docs/LIMITATIONS.md) · [DEPLOYMENT](docs/DEPLOYMENT.md)
+PORTFOLIO 문서는 ablation 본 실행 결과가 나온 뒤 작성합니다.

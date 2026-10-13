@@ -142,6 +142,9 @@ def test_ablation_end_to_end_on_synthetic(tiny_plan, synthetic_root, category, t
         assert fit["peak_rss_fit_mb"] > 0 and fit["memory_bank_mb"] > 0
         ev = stage_eval(tiny_plan, exp, category, seed, synthetic_root, out, keep_bank=False)
         assert ev["status"] == "OK" and ev["n_val_normal"] == 2
+        scores = pd.read_csv(out / "stages" / f"{exp}__{category}__s{seed}" / "scores.csv")
+        assert list(scores.split.unique()) == ["val_normal", "val_synthetic", "test"]
+        assert len(scores) == 2 + 2 + ev["n_test"]
         assert ev["latency_p95_ms"] > 0 and ev["peak_rss_serve_mb"] >= ev["rss_after_load_mb"] * 0.5
         for k in ("val_image_auroc", "test_image_auroc", "test_pixel_auroc", "test_aupro"):
             assert ev[k] is None or 0 <= ev[k] <= 1

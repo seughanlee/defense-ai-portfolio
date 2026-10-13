@@ -13,6 +13,7 @@
 | 2026-10-12 | Windows 10, Python 3.14.7, torch 2.14.1+cpu, anomalib 2.7.0 | **43 passed** in 19.5 s |
 | 2026-10-12 (ablation 추가 후) | 같은 환경 + psutil 7.2.2 | **56 passed** in 63 s |
 | 2026-10-13 (백엔드 추가 후) | 같은 환경 + FastAPI 0.143, SQLAlchemy 2.1.4, `HF_HUB_OFFLINE=1` | **87 passed** in 51 s (ML 57 + 백엔드 30), ruff 통과 |
+| 2026-10-13 (임계값 안정성·강건성 추가 후) | 같은 환경 | **103 passed** in 54 s (ML 73 + 백엔드 30), ruff 통과 |
 
 ## 범위
 | 파일 | 다루는 요구사항 |
@@ -20,6 +21,8 @@
 | `test_config.py` | 설정 로딩, 오버라이드, 잘못된 값·오타 키·테스트셋 튜닝 방식 거부 |
 | `test_dataset.py` | 데이터셋 없음, 카테고리 없음, 빈 학습 폴더, 구조 검증, 마스크 누락·크기 불일치, 손상 이미지, train–test 누수, 분할 결정성·배타성, 흑백→RGB |
 | `test_metrics_and_transforms.py` | 전처리 출력 형태·정규화, 잘못된 입력 거부, 마스크 이진성, 이미지·픽셀 지표 정답값, 지연시간 요약 |
+| `test_threshold_stability.py` | 순서통계량 기대 오경보율 정답값(n=44 → 1/45, 2/45), 몬테카를로 시뮬레이션과 일치, 검증셋이 클수록 1%에 수렴, 부트스트랩 결정성·폭 |
+| `test_robustness.py` | 변형 5종의 형태·자료형 유지, 무변형 수준에서 원본 그대로, 노이즈 seed 결정성, 회전 시 마스크가 이미지와 함께 회전, 색 변형은 마스크 불변, 방향 정의 결함 제외, 합성 데이터 전 경로 |
 | `backend/tests/test_api.py` | health·readiness·Demo Mode(가짜 점수 없이 503), 모델 로딩 실패, 검사 왕복(점수·판정·결과 PNG 4종), 형식(PNG/JPEG/BMP/흑백), 페이지네이션·필터, 통계, 재기동 후 유지, 빈 파일·위장 파일·잘린 PNG·GIF·필드 누락·크기 초과·픽셀 수 초과(압축 폭탄), 없는/잘못된 ID, 경로 조작, 파일명 정리, API 키, **DB 실패 시 롤백 + 저장 파일 삭제 + 500에 request_id**, 운영 설정 가드, 로그에 파일명 미기록, OpenAPI 문서 |
 | `backend/tests/test_api_real_model.py` | 실제 PatchCore 아티팩트(합성 데이터, 랜덤 백본)를 API로 서비스: readiness → 검사 → heatmap 원본 해상도 복원 → 모델 메타데이터 |
 | `test_patchcore_pipeline.py` | 학습 전 추론 거부, 빈 입력, 메모리 뱅크 생성, 학습 중 백본 불변, 점수·heatmap 형태, 임계값 판정, 저장·로드 동일성, 덮어쓰기 거부, 체크포인트 누락, 메모리 뱅크 변조, 백본 불일치, 손상 메타데이터, 학습→평가 전 경로 |

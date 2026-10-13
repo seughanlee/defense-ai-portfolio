@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pandas as pd
 import yaml
 
 from ml.datasets.mvtec import category_dir, load_image, load_mask, official_test_split, scan_category
@@ -161,6 +162,14 @@ def stage_eval(plan: dict, exp_id: str, category: str, seed: int, data_root: Pat
         "peak_rss_eval_mb": round(peak_rss_mb(), 1),
     }
     (stage_dir / "eval.json").write_text(json.dumps(result, indent=2, default=float), encoding="utf-8")
+    # Per-image scores for failure analysis and threshold studies without re-running inference.
+    pd.DataFrame({
+        "split": ["val_normal"] * len(val_imgs) + ["val_synthetic"] * len(synth) + ["test"] * len(tests),
+        "item": [f for f in meta["dataset"]["split"]["val_files"]] + [f"{s.kind}/{i}" for i, s in enumerate(synth)]
+        + [f"{s.defect_type}/{s.image_path.name}" for s in tests],
+        "label": np.concatenate([v_labels, t_labels]),
+        "score": np.concatenate([v_scores, t_scores]),
+    }).to_csv(stage_dir / "scores.csv", index=False)
     if not keep_bank:  # banks are reproducible from (plan, seed); keep metadata + checksum only
         (artifact / MEMORY_BANK_FILE).unlink()
     return result
