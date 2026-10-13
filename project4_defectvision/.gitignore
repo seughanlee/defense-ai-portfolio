@@ -3,3 +3,7 @@ data/
 # Trained memory banks and evaluation outputs (regenerable; see README)
 artifacts/
 .pytest_cache/
+# API runtime state (SQLite DB, uploaded images and rendered heatmaps)
+var/
+# Local secrets
+.env

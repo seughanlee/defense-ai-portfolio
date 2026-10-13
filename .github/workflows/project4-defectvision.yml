@@ -1,0 +1,43 @@
+name: project4-defectvision
+
+on:
+  push:
+    paths: ["project4_defectvision/**", ".github/workflows/project4-defectvision.yml"]
+  pull_request:
+    paths: ["project4_defectvision/**", ".github/workflows/project4-defectvision.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    # Lint + all offline tests. No dataset or pretrained weights are needed: tests use synthetic images
+    # and a randomly initialised backbone. Real MVTec AD experiments are not part of CI.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: project4_defectvision
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            project4_defectvision/requirements.txt
+            project4_defectvision/backend/requirements.txt
+      - name: Install CPU PyTorch
+        run: pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r backend/requirements.txt
+      - name: Lint (ruff)
+        run: ruff check .
+      - name: Tests (pytest, offline)
+        env:
+          HF_HUB_OFFLINE: "1"   # guarantees no test silently downloads weights
+        run: python -m pytest -q -m "not dataset"

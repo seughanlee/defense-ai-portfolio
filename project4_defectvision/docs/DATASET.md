@@ -5,8 +5,14 @@
 - 논문: Bergmann et al., *MVTec AD — A Comprehensive Real-World Dataset for Unsupervised Anomaly Detection*, CVPR 2019;
   Bergmann et al., *The MVTec Anomaly Detection Dataset*, IJCV 2021 (PRO 지표 정의)
 - 라이선스: **CC BY-NC-SA 4.0** (비상업, 출처 표시, 동일 조건 변경 허락). 데이터와 이 데이터로 만든 메모리 뱅크는 저장소에 올리지 않습니다.
-- 다운로드: 공식 페이지에서 라이선스에 동의한 뒤 받습니다. **다운로드 URL을 추측해서 자동 다운로드하지 않습니다.**
-  받은 파일의 이름·크기·SHA-256은 이 문서에 기록합니다 (현재: **미확보**).
+- 다운로드: 라이선스에 동의한 뒤, anomalib 2.7.0 소스(`anomalib/data/datamodules/image/mvtecad.py`의 `DOWNLOAD_INFO`)에 기록된
+  MVTec 공식 링크(mydrive.ch)로 받았습니다. URL을 추측하지 않았고, anomalib에 기록된 해시로 검증했습니다.
+
+| 파일 | 크기 | SHA-256 | 받은 날 |
+|---|---|---|---|
+| `mvtec_anomaly_detection.tar.xz` | 5,264,982,680 bytes | `cf4313b13603bec67abb49ca959488f7eedce2a9f7795ec54446c649ac98cd3d` (anomalib 기록값과 일치) | 2026-10-12 ~ 13 (서버가 연결을 끊어 이어받기로 완료) |
+
+압축본 전체 중 아래 4개 카테고리와 `license.txt`, `readme.txt`만 `data/mvtec_ad/`에 풀었습니다 (1.1 GB).
 
 ### 디렉터리 구조 (코드가 기대하는 형식)
 ```
@@ -24,10 +30,17 @@ data/mvtec_ad/<category>/
 
 | category | train/good | test/good | test 결함 유형 (장수) | 해상도·모드 | 지문 (SHA-256 앞 12자) |
 |---|---|---|---|---|---|
-| metal_nut | NOT_RUN | | | | |
-| screw | NOT_RUN | | | | |
-| capsule | NOT_RUN | | | | |
-| transistor | NOT_RUN | | | | |
+| metal_nut | 220 | 22 | bent 25, color 22, flip 23, scratch 23 | 700×700 RGB | `6f2234a047df` |
+| screw | 320 | 41 | manipulated_front 24, scratch_head 24, scratch_neck 25, thread_side 23, thread_top 23 | 1024×1024 **흑백(L)** | `bf27cac48f8d` |
+| capsule | 219 | 23 | crack 23, faulty_imprint 22, poke 21, scratch 23, squeeze 20 | 1000×1000 RGB | `8c624edd7a8c` |
+| transistor | 213 | **60** | bent_lead 10, cut_lead 10, damaged_case 10, misplaced 10 | 1024×1024 RGB | `930c02c31a1d` |
+
+검증 결과 (2026-10-13, `scripts/inspect_dataset.py`): 4개 카테고리 모두 **PASS** — 손상 파일 0, 마스크 누락·크기 불일치 0, 고아 마스크 0, train–test 동일 파일 0.
+
+데이터에서 확인한 주의점:
+- **transistor는 test에서 정상(60)이 결함(40)보다 많습니다.** 다른 카테고리와 양성 비율이 달라 AP를 카테고리끼리 직접 비교하면 안 됩니다.
+- **metal_nut `flip`과 transistor `misplaced`는 방향·위치 자체가 결함입니다.** 회전·이동 강건성 시험은 이 유형의 의미를 바꾸므로 따로 다룹니다 ([EVALUATION.md](EVALUATION.md)).
+- screw는 흑백이라 3채널로 복제해 넣습니다. 컬러 정보가 없는 입력에 ImageNet 컬러 백본을 쓰는 셈입니다.
 
 ## 분할 규칙
 | 분할 | 출처 | 용도 |

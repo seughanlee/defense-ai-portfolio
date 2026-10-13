@@ -1,0 +1,4 @@
+category,val_metric,test_metric,n_configs,spearman_rho
+metal_nut,val_image_auroc,test_image_auroc,1,
+metal_nut,val_pixel_auroc,test_pixel_auroc,1,
+metal_nut,val_aupro,test_aupro,1,

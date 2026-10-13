@@ -18,11 +18,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ml.datasets.mvtec import NORMAL, load_image, load_mask, official_test_split, scan_category
+from ml.datasets.mvtec import load_image, load_mask, official_test_split, scan_category
 from ml.datasets.transforms import resize_mask
 from ml.evaluation.metrics import aupro, image_metrics, latency_summary, mean_iou, pixel_auroc
 from ml.inference.patchcore import METADATA_FILE, PatchCoreDetector
-from ml.visualization.overlay import save_panel
+from ml.visualization.overlay import model_map_range, save_panel
 
 logger = logging.getLogger("evaluate")
 
@@ -90,8 +90,7 @@ def evaluate(artifact_dir: Path, data_root: Path, out_dir: Path | None = None, n
     }
 
     # Example panels: highest-scoring normals (false-alarm candidates) and lowest-scoring defects (misses).
-    vmin = meta["calibration"].get("val_score_min", float(maps.min()))
-    vmax = 2 * detector.pixel_threshold if detector.pixel_threshold else float(maps.max())
+    vmin, vmax = model_map_range(meta["calibration"], detector.pixel_threshold, float(maps.max()))
     order_normal = [i for i in np.argsort(-scores) if labels[i] == 0][: n_panels // 2]
     order_defect = [i for i in np.argsort(scores) if labels[i] == 1][: n_panels - len(order_normal)]
     for i in order_normal + order_defect:

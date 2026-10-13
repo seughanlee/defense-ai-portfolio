@@ -29,6 +29,19 @@ def normalize_map(amap: np.ndarray, vmin: float, vmax: float) -> np.ndarray:
     return np.clip((amap - vmin) / (vmax - vmin), 0.0, 1.0)
 
 
+def model_map_range(calibration: dict, pixel_threshold: float | None, fallback_max: float) -> tuple[float, float]:
+    """Fixed colour range for one model: [lowest validation image score, 2 x pixel threshold].
+
+    Regions below the least anomalous validation image stay blue; regions above the pixel threshold turn
+    warm. Shared by the evaluation panels and the API so both render a given map identically.
+    """
+    vmax = 2 * pixel_threshold if pixel_threshold else fallback_max
+    vmin = calibration.get("val_score_min", 0.0)
+    if vmin >= vmax:
+        vmin = 0.0
+    return float(vmin), float(vmax)
+
+
 def colorize(norm_map: np.ndarray) -> np.ndarray:
     """[0, 1] map -> RGB uint8 heatmap (JET colormap)."""
     bgr = cv2.applyColorMap((norm_map * 255).astype(np.uint8), cv2.COLORMAP_JET)

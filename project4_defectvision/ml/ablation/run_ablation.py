@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -43,15 +44,24 @@ def main() -> int:
     p.add_argument("--results", type=Path, default=PROJECT_DIR / "results/ablation")
     p.add_argument("--retry-failed", action="store_true")
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--max-runs", type=int, default=None, help="stop after this many executed runs")
+    p.add_argument("--allow-download", action="store_true",
+                   help="let timm/Hugging Face fetch backbone weights (default: offline, cached weights only)")
     args = p.parse_args()
 
     plan = load_plan(args.plan)
     categories = args.categories or plan["categories"]
     runs = planned_runs(plan, categories, args.experiments)
     print(f"{len(runs)} runs planned (plan sha256 {plan['_sha256'][:12]})", flush=True)
+    # Offline by default: every run uses exactly the cached weights, and a flaky network or Hub rate limit
+    # cannot fail a multi-hour study half way. Missing weights fail fast with a clear log instead.
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    if not args.allow_download:
+        env["HF_HUB_OFFLINE"] = "1"
     logs = args.out / "logs"
     logs.mkdir(parents=True, exist_ok=True)
 
+    executed = 0
     for i, (exp_id, cat, seed) in enumerate(runs, 1):
         name = run_name(exp_id, cat, seed)
         stage_dir = args.out / "stages" / name
@@ -61,6 +71,10 @@ def main() -> int:
         if args.dry_run:
             print("would run", name)
             continue
+        if args.max_runs is not None and executed >= args.max_runs:
+            print(f"--max-runs {args.max_runs} reached; stopping", flush=True)
+            break
+        executed += 1
         failed.unlink(missing_ok=True)
         t0 = time.time()
         common = ["--plan", str(args.plan), "--exp", exp_id, "--category", cat, "--seed", str(seed),
@@ -71,7 +85,7 @@ def main() -> int:
             with open(logs / f"{name}.{stage}.log", "w", encoding="utf-8") as log:
                 rc = subprocess.run(
                     [sys.executable, "-W", "ignore", "-m", "ml.ablation.run_one", stage, *common],
-                    cwd=PROJECT_DIR, stdout=log, stderr=subprocess.STDOUT, check=False,
+                    cwd=PROJECT_DIR, stdout=log, stderr=subprocess.STDOUT, check=False, env=env,
                 ).returncode
             if rc != 0:
                 tail = (logs / f"{name}.{stage}.log").read_text(encoding="utf-8", errors="replace")[-2000:]

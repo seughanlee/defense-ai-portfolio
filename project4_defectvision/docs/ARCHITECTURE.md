@@ -50,13 +50,44 @@ React 대시보드 ──HTTP──▶ FastAPI (ai-api) ──▶ PatchCoreDetec
 - API는 기동 직후 `ready=false`로 시작해, 아티팩트 검증과 백본 로딩이 끝난 뒤에만 readiness를 통과시킵니다.
 - 모델이 없으면 대시보드는 "Demo Mode"를 표시하고, 가짜 점수를 만들지 않습니다.
 
+## 5.1 백엔드 (Phase 2, 구현 완료)
+```
+backend/app/
+├── main.py              create_app(): 설정·DB·저장소·모델 서비스 조립, 요청 ID·크기 제한·오류 미들웨어
+├── core/config.py       DV_* 환경변수 (dev/test/prod). prod는 API 키·PostgreSQL·명시적 CORS가 없으면 기동 거부
+├── core/logging.py      JSON 한 줄 로그 + request_id. 파일 내용·사용자 파일명·비밀값은 기록하지 않음
+├── core/errors.py       {"error": {code, message, request_id}} 형식 통일
+├── db/                  SQLAlchemy 2: inspections 테이블, 요청 단위 세션 (끝에서 commit, 오류 시 rollback)
+├── services/
+│   ├── model_service.py 상태 not_configured / loading / ready / failed. 백그라운드 로딩, 추론 직렬화(잠금)
+│   ├── image_validation.py  내용 기반 형식 판별, 크기·픽셀 수 제한, 전체 디코딩, 파일명 정리
+│   └── storage.py       결과 PNG 저장. 경로는 서버가 만든 UUID + 고정 이름만 사용
+├── schemas/             Pydantic 응답 모델
+└── api/routes.py        엔드포인트
+```
+
+| 메서드 · 경로 | 설명 | 주요 상태 코드 |
+|---|---|---|
+| `GET /api/v1/health` | 생존 확인 + 모델 상태 (인증 없음) | 200 |
+| `GET /api/v1/health/ready` | 검증된 모델이 로드된 경우만 200 (인증 없음) | 200 / 503 |
+| `GET /api/v1/models` | 활성 모델 메타데이터 (버전, 데이터셋 지문, 임계값, 평가 요약, 체크섬) | 200 |
+| `POST /api/v1/inspections` | multipart 이미지 검사 → 저장 | 201 / 400 / 413 / 415 / 422 / 503 |
+| `GET /api/v1/inspections` | 이력 (page, page_size ≤ 100, prediction, model_version, since, until) | 200 / 422 |
+| `GET /api/v1/inspections/{id}` | 상세 | 200 / 404 / 422 |
+| `GET /api/v1/inspections/{id}/{original,heatmap,overlay,mask}` | 결과 PNG | 200 / 404 / 422 |
+| `GET /api/v1/metrics/summary` | 건수, 이상 비율, 지연 p50/p95, 최근 24시간 시간대별 이상 비율, 모델 버전별 건수 | 200 |
+
+검사 요청 처리 순서: 모델 준비 확인(503) → 본문 크기 제한(413) → 내용 기반 이미지 검증(400/413/415) → 추론(잠금)
+→ 결과 PNG 저장 → DB flush. **flush가 실패하면 저장한 파일을 지우고** 트랜잭션을 되돌립니다. 처리되지 않은 예외는
+미들웨어에서 request_id를 붙여 500으로 응답하며, 내부 메시지는 응답에 넣지 않고 로그에만 남깁니다.
+
 ## 6. Phase 계획
 | Phase | 산출물 | 완료 기준 | 선행 조건 |
 |---|---|---|---|
-| 1 | ML 코어 | 합성 데이터로 전 경로 테스트 통과 ✅ / MVTec 1개 카테고리 실측 ⏳ | MVTec AD, 백본 가중치 다운로드 동의 |
-| 2 | `backend/` FastAPI | 6개 엔드포인트, 업로드 검증, readiness, pytest | Phase 1 |
+| 1 | ML 코어 | 합성 데이터로 전 경로 테스트 통과 ✅ / MVTec 확보·검증 ✅ / 실측 ablation ⏳ (CPU 수 시간, 보류 중) | — |
+| 2 | `backend/` FastAPI | 6개 엔드포인트, 업로드 검증, readiness, pytest ✅ (PostgreSQL 실행 검증은 Phase 4) | Phase 1 |
 | 3 | `frontend/` React+TS+Vite+Tailwind | 4개 화면, 오류 상태 테스트, 빌드 | Node.js LTS 설치 |
-| 4 | Docker Compose (ai-api, web-dashboard, postgres), GitHub Actions | `docker compose up` 헬스체크 통과, CI green | Docker Desktop 또는 WSL2 |
+| 4 | Docker Compose (ai-api, web-dashboard, postgres), GitHub Actions | `docker compose up` 헬스체크 통과, CI green | Docker Desktop 또는 WSL2 (CI 워크플로는 작성 완료, push 전이라 미실행) |
 | 5 | CNN 비교 모델, 임계값 검증, 강건성, 벤치마크 | 재현 가능한 보고서 | Phase 1 실측 |
 
 ## 7. 위험 요소
@@ -67,3 +98,5 @@ React 대시보드 ──HTTP──▶ FastAPI (ai-api) ──▶ PatchCoreDetec
 | anomalib API 변경 | 버전 고정(2.7.0), 래퍼 계층에서만 사용 |
 | timm 백본 가중치 버전 변경 | 백본 해시를 메타데이터에 저장, 불일치 시 로드 거부 |
 | MVTec AD 비상업 라이선스 | 데이터·파생 가중치 미배포, 포트폴리오(비상업) 용도로만 사용 |
+| Hugging Face Hub 접속 의존 | 가중치가 캐시에 있어도 로드 때마다 Hub에 요청을 보냄 → ablation 실행기는 기본 오프라인(`HF_HUB_OFFLINE=1`), 배포 이미지도 가중치 포함 + 오프라인 실행 예정 |
+| 업로드 악용 (거대 파일, 압축 폭탄, 위장 파일, 경로 조작) | 크기·픽셀 수 제한, 내용 기반 판별, UUID 경로 — 각각 테스트로 고정 |

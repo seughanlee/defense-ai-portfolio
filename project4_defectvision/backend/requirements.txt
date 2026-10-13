@@ -1,0 +1,11 @@
+# API service (Phase 2). Install on top of ../requirements.txt (the API imports the ml package).
+fastapi>=0.115
+uvicorn>=0.30
+sqlalchemy>=2.0
+pydantic>=2.7
+pydantic-settings>=2.3
+python-multipart>=0.0.9   # multipart/form-data uploads
+psycopg[binary]>=3.2      # PostgreSQL driver (Compose / production); SQLite needs nothing extra
+httpx>=0.27               # FastAPI TestClient
+psutil>=5.9               # peak-memory measurement in the ablation runner
+ruff>=0.6
