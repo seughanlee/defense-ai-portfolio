@@ -18,7 +18,7 @@ L-SAM 같은 다기능레이더(MFR) 기반 대공방어 체계 기업(LIG넥스
 | # | 프로젝트 | 체계 연관성 | 핵심 기술 | 상태 |
 |---|---|---|---|---|
 | 1 | [레이더 표적 추적 필터 비교 (KF / IMM / CT-EKF)](project1_radar_tracking/) | MFR 추적 처리 | 칼만필터, IMM, EKF, 몬테카를로, NEES 일관성, 강건성 시험 | **v2 완료** |
-| 2 | [마이크로도플러 기반 표적 분류](project2_microdoppler/) | 표적 식별(드론, 조류, 회전익) | 물리 기반 시뮬레이터, CNN vs 특징+RF, 보정, 미지 표적 탐지, ONNX INT8, conformal 예측 집합 | **v1 완료, v2 진행 중** |
+| 2 | [마이크로도플러 기반 표적 분류](project2_microdoppler/) | 표적 식별(드론, 조류, 회전익) | 물리 기반 시뮬레이터, CNN vs 특징+RF, 보정, 미지 표적 탐지, ONNX INT8, conformal 예측 집합, 계층형 출력 | **v2 완료** |
 | 3 | [장비 고장 예측(PHM)](project3_phm/) | 체계 가동률·후속 군수지원 | NASA C-MAPSS, 잔여수명(RUL) 예측, conformal 예측 구간, 정비 비용 분석 | **v1 완료** |
 | 4 | [DefectVision: 부품 외관 이상탐지](project4_defectvision/) | 생산·정비 품질 검사 | PatchCore(정상 이미지만 학습), heatmap, 사전 등록 ablation, AUPRO | **진행 중 (ML 코어 완료, 실데이터 실험 전)** |
 | 5 | 폐쇄망 기술문서 RAG | 정비 교범·규격 검색 | 로컬 LLM, 하이브리드 검색, 평가셋 구축 | 예정 |
